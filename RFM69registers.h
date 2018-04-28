@@ -296,16 +296,10 @@
 #define RFM69_RF_FRFMSB_314             0x4E
 #define RFM69_RF_FRFMID_314             0x80
 #define RFM69_RF_FRFLSB_314             0x00
-#define RFM69_RF_FRFMSB_315             0x4E
-#define RFM69_RF_FRFMID_315             0xC0
-#define RFM69_RF_FRFLSB_315             0x00
 #define RFM69_RF_FRFMSB_316             0x4F
 #define RFM69_RF_FRFMID_316             0x00
 #define RFM69_RF_FRFLSB_316             0x00
 // 433mhz band
-#define RFM69_RF_FRFMSB_433             0x6C
-#define RFM69_RF_FRFMID_433             0x40
-#define RFM69_RF_FRFLSB_433             0x00
 #define RFM69_RF_FRFMSB_434             0x6C
 #define RFM69_RF_FRFMID_434             0x80
 #define RFM69_RF_FRFLSB_434             0x00

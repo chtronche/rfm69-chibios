@@ -26,18 +26,6 @@ static void print(const char *s) {
   sdWrite(&SD2, (const uint8_t *)s, strlen(s));
 }
 
-/* static uint8_t readReg(uint8_t reg) { */
-/*   spiAcquireBus(&SPID1); */
-/*   spiStart(&SPID1, &ls_spicfg);       /\* Setup transfer parameters.       *\/ */
-/*   spiSelect(&SPID1); */
-/*   _reg = reg & 0x7f; */
-/*   spiSend(&SPID1, 1, (void *)&_reg); */
-/*   spiReceive(&SPID1, 1, (void *)&v); */
-/*   spiUnselect(&SPID1); */
-/*   spiReleaseBus(&SPID1); */
-/*   return v; */
-/* } */
-
 static const SPIConfig ls_spicfg = {
   NULL,
   GPIOB,
@@ -46,12 +34,41 @@ static const SPIConfig ls_spicfg = {
   0
 };
 
-RFM69Driver RFM69;
-
 RFM69Config _RFM69Config = {
   &SPID1, &ls_spicfg,
   GPIOB, 6, /* slave select */
-  RFM69_433MHZ,
+  &rfm69_433MHz,
+  &rfm69_4800bps,
+  false, /* isRFM69HW */
+  false, /* lowPowerLabCompatibility */
+};
+
+static const EXTConfig extcfg = {
+  {
+    {EXT_CH_MODE_DISABLED, NULL}, /* 0 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 1 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 2 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 3 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 4 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 5 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 6 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 7 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 8 */
+    {EXT_CH_MODE_RISING_EDGE | EXT_MODE_GPIOA | EXT_CH_MODE_AUTOSTART, rfm69_1ExtCallback }, /* 9 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 10 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 11 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 12 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 13 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 14 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 15 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 16 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 17 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 18 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 19 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 20 */
+    {EXT_CH_MODE_DISABLED, NULL}, /* 21 */
+    {EXT_CH_MODE_DISABLED, NULL}  /* 22 */
+  }
 };
 
 int main(void) {
@@ -59,7 +76,8 @@ int main(void) {
   chSysInit();
 
   sdStart(&SD2, NULL);
-  rfm69ObjectInit(&RFM69);
+
+  rfm69ObjectInit(&RFM69_1);
 
   /*
    * SPI1 I/O pins setup.
@@ -77,19 +95,32 @@ int main(void) {
   rfm69Reset(GPIOC, 7);
 
   print("Starting...\n");
-  rfm69Start(&RFM69, &_RFM69Config);
+  extStart(&EXTD1, &extcfg); /* Don't start before rfm69Start ! Or enable channel only after */
+  rfm69Start(&RFM69_1, &_RFM69Config);
 
   char buffer[64];
 
+  for(uint8_t reg = 0x1; reg <= 0x4f; reg++) {
+    uint8_t v = rfm69ReadReg(&RFM69_1, reg);
+    sprintf(buffer, "%02x %02x  ", reg, v);
+    print(buffer);
+    if (reg % 10 == 0) print("\n");
+  }
+  print("\n");
+
   for(;;) {
-    for(uint8_t reg = 0x1; reg <= 0x4f; reg++) {
-      uint8_t v = rfm69ReadReg(&RFM69, reg);
-      sprintf(buffer, "%02x %02x  ", reg, v);
-      print(buffer);
-      if (reg % 10 == 0) print("\n");
+    print(".");
+    /* uint8_t mode = rfm69ReadReg(&RFM69_1, 0x01); */
+    /* uint8_t flags1 = rfm69ReadReg(&RFM69_1, 0x27); */
+    /* uint8_t flags2 = rfm69ReadReg(&RFM69_1, 0x28); */
+    /* sprintf(buffer, "[%x %x %x]", mode, flags1, flags2); */
+    /* print(buffer); */
+    if (rfm69ReadAvailable(&RFM69_1)) {
+      rfm69Read(&RFM69_1, buffer, 64);
+      print(buffer + 4);
+      sprintf(buffer, "rssi = %d\n", rfm69ReadRSSI(&RFM69_1));
     }
-    print("\n\n");
-    chThdSleepMilliseconds(3 * 1000);
+    chThdSleepMilliseconds(500);
   }
   return 0;
 }

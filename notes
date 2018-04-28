@@ -1,0 +1,4 @@
+Differences with LowPowerLab library:
+Hopefully as few as possible.
+constants are prefixed with RFM69_, to avoid problems with other libraries.
+
