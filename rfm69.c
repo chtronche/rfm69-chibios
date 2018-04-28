@@ -8,7 +8,7 @@
 
 #define RFM69_MAX_DRIVER_NUM (2)
 
-RFM69Driver RFM69_1;
+RFM69Driver RFM69D1;
 
 void rfm69ObjectInit(RFM69Driver *devp) {
   devp->config = NULL;
@@ -165,8 +165,8 @@ void rfm69_1ExtCallback(EXTDriver *extp, expchannel_t channel) {
   (void)channel;
   if (inCB) return;
   inCB = true; // Race condition ?
-  RFM69_1.rxEmpty = false;
-  if (RFM69_1.waitingThread);
+  RFM69D1.rxEmpty = false;
+  if (RFM69D1.waitingThread);
   inCB = false;
 }
 

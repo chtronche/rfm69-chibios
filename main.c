@@ -77,7 +77,7 @@ int main(void) {
 
   sdStart(&SD2, NULL);
 
-  rfm69ObjectInit(&RFM69_1);
+  rfm69ObjectInit(&RFM69D1);
 
   /*
    * SPI1 I/O pins setup.
@@ -96,12 +96,12 @@ int main(void) {
 
   print("Starting...\n");
   extStart(&EXTD1, &extcfg); /* Don't start before rfm69Start ! Or enable channel only after */
-  rfm69Start(&RFM69_1, &_RFM69Config);
+  rfm69Start(&RFM69D1, &_RFM69Config);
 
   char buffer[64];
 
   for(uint8_t reg = 0x1; reg <= 0x4f; reg++) {
-    uint8_t v = rfm69ReadReg(&RFM69_1, reg);
+    uint8_t v = rfm69ReadReg(&RFM69D1, reg);
     sprintf(buffer, "%02x %02x  ", reg, v);
     print(buffer);
     if (reg % 10 == 0) print("\n");
@@ -110,15 +110,15 @@ int main(void) {
 
   for(;;) {
     print(".");
-    /* uint8_t mode = rfm69ReadReg(&RFM69_1, 0x01); */
-    /* uint8_t flags1 = rfm69ReadReg(&RFM69_1, 0x27); */
-    /* uint8_t flags2 = rfm69ReadReg(&RFM69_1, 0x28); */
+    /* uint8_t mode = rfm69ReadReg(&RFM69D1, 0x01); */
+    /* uint8_t flags1 = rfm69ReadReg(&RFM69D1, 0x27); */
+    /* uint8_t flags2 = rfm69ReadReg(&RFM69D1, 0x28); */
     /* sprintf(buffer, "[%x %x %x]", mode, flags1, flags2); */
     /* print(buffer); */
-    if (rfm69ReadAvailable(&RFM69_1)) {
-      rfm69Read(&RFM69_1, buffer, 64);
+    if (rfm69ReadAvailable(&RFM69D1)) {
+      rfm69Read(&RFM69D1, buffer, 64);
       print(buffer + 4);
-      sprintf(buffer, "rssi = %d\n", rfm69ReadRSSI(&RFM69_1));
+      sprintf(buffer, "rssi = %d\n", rfm69ReadRSSI(&RFM69D1));
     }
     chThdSleepMilliseconds(500);
   }
