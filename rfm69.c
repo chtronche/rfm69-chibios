@@ -228,22 +228,22 @@ unsigned int rfm69ReadAvailable(RFM69Driver *devp) {
 
 void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
   (void)devp;
-  uint8_t *p = buf;
   SPIDriver *spi = devp->config->spip;
 
   unsigned int available = rfm69ReadAvailable(devp);
-
-  spiAcquireBus(spi);
-  spiSelect(spi);
 
   uint8_t readFifo = RFM69_REG_FIFO;
   int toRead = MIN(bufferSize, available);
   sprintf(buffer, "\n%d bytes: ", toRead);
   print(buffer);
+
+  spiAcquireBus(spi);
+  spiSelect(spi);
+
+  /*
   spiExchange(spi, 4, &readFifo, buf);
-  spiExchange(spi, toRead - 4, &readFifo, buf + 4);
-  /* spiSend(spi, 1, (void *)&readFifo); */
-  /* spiReceive(spi, toRead, p); */
+  */
+  spiExchange(spi, toRead, &readFifo, buf);
 
   spiUnselect(spi);
   spiReleaseBus(spi);
