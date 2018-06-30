@@ -70,7 +70,7 @@ typedef struct {
   RFM69Config *config;
   thread_t *waitingThread;
   rfm69_status_t status;
-  uint8_t mode;
+  volatile uint8_t mode;
   bool rxEmpty;
   uint8_t rxAvailable;
   uint8_t lpl_targetId;
@@ -105,28 +105,34 @@ void rfm69ObjectInit(RFM69Driver *);
 void rfm69Start(RFM69Driver *, RFM69Config *);
 void rfm69Stop(RFM69Driver *);
 
-void rfm69Send(RFM69Driver *, uint8_t toAddress, const void *buffer, uint8_t bufferSize, bool requestACK);
+void rfm69Send(RFM69Driver *, uint8_t bufferSize, const void *buffer);
 void rfm69SendWithRetry(RFM69Driver *, uint8_t toAddress, const void *buffer, uint8_t bufferSize, uint8_t retries, uint8_t retryWaitTime);
 
 unsigned int rfm69ReadAvailable(RFM69Driver *);
 void rfm69Read(RFM69Driver *, void *buffer, uint8_t bufferSize);
 void rfm69ReadWithTimeout(void);
 
+/* Set parameters */
+
 void rfm69SetFrequency(RFM69Driver *, const rfm69_frequency_t *);
 void rfm69SetBitrate(RFM69Driver *, const rfm69_bitrate_t *);
+void rfm69SetPower(RFM69Driver *);
+void rfm69SetPowerDB(RFM69Driver *);
 void rfm69SetPromiscuousMode(RFM69Driver *, bool);
 
 uint8_t rfm69ReadRSSI(RFM69Driver *);
 void rfm69RcCalibration(RFM69Driver *);
 uint8_t rfm69ReadTemperature(RFM69Driver *, uint8_t calFactor); // get CMOS temperature (8bit)
 
-void rfm69_1ExtCallback(EXTDriver *, expchannel_t); /* Don't forget to put that on a channel RISING_EDGE, or you won't be notified of any incoming packet ! */
+void rfm69D1ExtCallback(EXTDriver *extp, expchannel_t channel); /* Don't forget to put that on a channel RISING_EDGE, or you won't be notified of any incoming packet ! */
 
 /* Direct register access primitives */
 
 uint8_t rfm69ReadReg(RFM69Driver *, uint8_t addr);
 void rfm69WriteReg(RFM69Driver *, uint8_t addr, uint8_t values);
 
-void rfm69Reset(ioportid_t resetIOPort, uint16_t resetPad); /* Most import API of all */
+void rfm69Reset(ioportid_t resetIOPort, uint16_t resetPad); /* Most important API of all */
+
+void led(int n);
 
 #endif /* _RFM69_H_ */

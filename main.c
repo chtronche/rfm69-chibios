@@ -15,6 +15,7 @@
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ch.h"
@@ -22,8 +23,12 @@
 
 #include "rfm69.h"
 
-static void print(const char *s) {
+//Mutex printMutex;
+
+void print(const char *s) {
+  //  chMtxLock(&printMutex);
   sdWrite(&SD2, (const uint8_t *)s, strlen(s));
+  //  chMtxUnlock(&printMutex);
 }
 
 static const SPIConfig ls_spicfg = {
@@ -54,7 +59,7 @@ static const EXTConfig extcfg = {
     {EXT_CH_MODE_DISABLED, NULL}, /* 6 */
     {EXT_CH_MODE_DISABLED, NULL}, /* 7 */
     {EXT_CH_MODE_DISABLED, NULL}, /* 8 */
-    {EXT_CH_MODE_RISING_EDGE | EXT_MODE_GPIOA | EXT_CH_MODE_AUTOSTART, rfm69_1ExtCallback }, /* 9 */
+    {EXT_CH_MODE_RISING_EDGE | EXT_MODE_GPIOA | EXT_CH_MODE_AUTOSTART, rfm69D1ExtCallback }, /* 9 */
     {EXT_CH_MODE_DISABLED, NULL}, /* 10 */
     {EXT_CH_MODE_DISABLED, NULL}, /* 11 */
     {EXT_CH_MODE_DISABLED, NULL}, /* 12 */
@@ -71,11 +76,48 @@ static const EXTConfig extcfg = {
   }
 };
 
+/*
+static THD_WORKING_AREA(waThread1, 128);
+static THD_FUNCTION(Thread1, arg) {
+  (void)arg;
+  chRegSetThreadName("check");
+  for(int n = 0;;++n) {
+    palTogglePad(GPIOC, 0);
+    chThdSleepSeconds(1);
+  }
+}
+*/
+
+static volatile int n = 0;
+
+static uint32_t total = 0;
+static uint32_t missed = 0;
+static uint32_t last = 0;
+
+static void compareReg(const char *buffer) {
+  const char *p = index(buffer, '-');
+  if (!p) return;
+  char *end;
+  unsigned reg = strtoul(p + 1, &end, 16);
+  unsigned v = strtoul(end +1, NULL, 16);
+
+  unsigned vv = rfm69ReadReg(&RFM69D1, reg);
+
+  if (v == vv) return;
+
+  char buffer2[32];
+  sprintf(buffer2, "***<%02x|%02x>***", v, vv);
+  print(buffer2);
+}
+
 int main(void) {
   halInit();
   chSysInit();
 
+  //chMtxInit(printMutex);
   sdStart(&SD2, NULL);
+
+  //  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
   rfm69ObjectInit(&RFM69D1);
 
@@ -92,11 +134,26 @@ int main(void) {
                            PAL_STM32_OSPEED_HIGHEST);       /* New CS.      */
   palSetPad(GPIOB, 6);
 
+  palSetPadMode(GPIOA, 4, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOB, 0, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 1, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 0, PAL_MODE_OUTPUT_PUSHPULL);
+
+  led(0);
+  
+  for(int n = 15; n >= 0; n--) {
+    led(n);
+    chThdSleepMilliseconds(500);
+  }
+
   rfm69Reset(GPIOC, 7);
 
   print("Starting...\n");
   extStart(&EXTD1, &extcfg); /* Don't start before rfm69Start ! Or enable channel only after */
   rfm69Start(&RFM69D1, &_RFM69Config);
+
+  rfm69WriteReg(&RFM69D1, 0x13, 0xf);
+  rfm69WriteReg(&RFM69D1, 0x11, 0x7f);
 
   char buffer[64];
 
@@ -115,12 +172,32 @@ int main(void) {
     /* uint8_t flags2 = rfm69ReadReg(&RFM69D1, 0x28); */
     /* sprintf(buffer, "[%x %x %x]", mode, flags1, flags2); */
     /* print(buffer); */
-    if (rfm69ReadAvailable(&RFM69D1)) {
-      rfm69Read(&RFM69D1, buffer, 64);
-      print(buffer + 4);
-      sprintf(buffer, "rssi = %d\n", rfm69ReadRSSI(&RFM69D1));
+    //if (rfm69ReadAvailable(&RFM69D1)) {
+    rfm69Read(&RFM69D1, buffer, 64);
+    total += 1;
+    print(buffer + 4);
+    uint32_t v = atoi(buffer + 5);
+    if (v) {
+      if (last) missed += (v - last - 1);
+      last = v;
     }
-    chThdSleepMilliseconds(500);
+    
+    compareReg(buffer + 4);
+    sprintf(buffer, "rssi = %d\tv=%ld\ttotal=%ld\tmissed=%ld\n", 
+	    rfm69ReadRSSI(&RFM69D1), v, total, missed);
+    print(buffer);
+    //}
+    chThdSleepMilliseconds(250);
+    led(1);
+
+    buffer[0] = '\x80';
+    buffer[1] = (char)(98); /* Target id */
+    buffer[2] = 'P'; /* Source id */
+    buffer[3] = '\0'; /* Control byte */
+    sprintf(buffer + 4, "coucou %d", n++);
+    rfm69Send(&RFM69D1, strlen(buffer + 4) + 3, buffer);
+    led(2);
+    chThdSleepMilliseconds(250);
   }
   return 0;
 }
