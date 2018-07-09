@@ -6,6 +6,8 @@
 
 #include <ch.h>
 
+#include "debug.h"
+
 #define RFM69_MAX_DRIVER_NUM (1)
 
 RFM69Driver RFM69D1;
@@ -14,6 +16,7 @@ void rfm69ObjectInit(RFM69Driver *devp) {
   devp->config = NULL;
   devp->waitingThread = NULL;
   devp->status = rfm69_status_stop;
+  devp->badPacket = 0;
 }
 
 uint8_t rfm69ReadReg(RFM69Driver *devp, uint8_t addr) {
@@ -37,6 +40,10 @@ static void rfm69SpiSend(RFM69Driver *devp, uint16_t len, const uint8_t *array) 
   spiReleaseBus(spi);
 }
 
+/* When a register is written to the RFM69, it sends the old value
+   back during the SPI exchange. We could use this property to return
+   the register's old value, but don't do it yet */
+
 void rfm69WriteReg(RFM69Driver *devp, uint8_t addr, uint8_t v) {
   uint8_t array[2] = { addr | 0x80, v };
   rfm69SpiSend(devp, 2, array);
@@ -47,8 +54,7 @@ const rfm69_frequency_t rfm69_433MHz = { 0x6C, 0x40, 0x00 };
 const rfm69_frequency_t rfm69_868MHz = { 0xD9, 0x00, 0x00 };
 const rfm69_frequency_t rfm69_915MHz = { 0xE4, 0xC0, 0x00 };
 
-void print(const char *s);
-
+char bufferd[128];
 static inline void setMode(RFM69Driver *devp, uint8_t mode) {
   rfm69WriteReg(devp, RFM69_REG_OPMODE, mode);
 }
@@ -76,7 +82,27 @@ static void rfm69SetHighPowerRegs(RFM69Driver *devp, bool _set) {
 }
 
 static void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
+  switch(newMode) {
+  case RFM69_RF_OPMODE_STANDBY: led (4, 0xc); break;
+  case RFM69_RF_OPMODE_RECEIVER: led(8, 0xc); break;
+  case RFM69_RF_OPMODE_TRANSMITTER: led(0xc, 0xc); break;
+  default: led(0, 0xc);
+    
+  }
+
   if (devp->mode == newMode) return;
+
+  switch (newMode) {
+  case RFM69_RF_OPMODE_RECEIVER:
+    /* Interrupt when packet received */
+    rfm69WriteReg(devp, RFM69_REG_DIOMAPPING1, RFM69_RF_DIOMAPPING1_DIO0_01);
+    break;
+  case RFM69_RF_OPMODE_TRANSMITTER:
+    /* Interrupt when packet xmitted */    
+    rfm69WriteReg(devp, RFM69_REG_DIOMAPPING1, RFM69_RF_DIOMAPPING1_DIO0_00);
+    break;
+  }
+
   rfm69WriteReg(devp, RFM69_REG_OPMODE, (rfm69ReadReg(devp, RFM69_REG_OPMODE) & 0xE3) | newMode);
   devp->mode = newMode;
 
@@ -157,7 +183,6 @@ void rfm69Reset(ioportid_t ioport, uint16_t pad) {
 }
 
 void extCallback(RFM69Driver *devp) {
-  led(3);
   chSysLockFromISR();
   if (devp->mode == RFM69_RF_OPMODE_RECEIVER) devp->rxEmpty = false;
   if (devp->waitingThread) {
@@ -166,7 +191,6 @@ void extCallback(RFM69Driver *devp) {
     devp->waitingThread = NULL;
   }
   chSysUnlockFromISR();
-  led(4);
 }
 
 void rfm69D1ExtCallback(EXTDriver *extp, expchannel_t channel) {
@@ -176,49 +200,34 @@ void rfm69D1ExtCallback(EXTDriver *extp, expchannel_t channel) {
   extCallback(&RFM69D1);
 }
 
-#define BUFFER_SIZE (64)
+#define BUFFER_SIZE (128)
 
 char buffer[BUFFER_SIZE];
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-static void discard(RFM69Driver *devp, unsigned int n) {
-  SPIDriver *spi = devp->config->spip;
-  spiAcquireBus(spi);
-  spiSelect(spi);
-
-  uint8_t readFifo = RFM69_REG_FIFO;
-  if (n > devp->rxAvailable) n = devp->rxAvailable;
-  while(n > 0) {
-    unsigned int toRead = MIN(n, BUFFER_SIZE);
-    spiExchange(spi, toRead, &readFifo, buffer);
-    devp->rxAvailable -= toRead;
-    n -= toRead;
-  }
-
-  if (!devp->rxAvailable) devp->rxEmpty = true;
-  spiUnselect(spi);
-  spiReleaseBus(spi);
-}
-
-void clearFIFO(RFM69Driver *devp) {
+static void resetQueue(RFM69Driver *devp) {
+  print("*** Reset queue ***\n");
+  devp->badPacket++;
+  devp->rxAvailable = 0;
+  devp->rxEmpty = true;
+  /* Going from standby to receiver mode clears the FIFO */
+  rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY);
+  rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
 }
 
 static void _rfm69ReadAvailable(RFM69Driver *devp) {
   if (devp->rxEmpty) return;
   if (devp->rxAvailable) return;
   devp->rxAvailable = rfm69ReadReg(devp, RFM69_REG_FIFO) + 1;  /* +1 because of length ? */
-  /* sprintf(buffer, "len = %d\n", devp->rxAvailable); */
-  /* print(buffer); */
-  if (devp->rxAvailable < 2) {
-    /* print("Bad packet length ???\n"); */
-    discard(devp,devp->rxAvailable);
+  if (devp->rxAvailable < 2 || devp->rxAvailable > 64) {
+    resetQueue(devp);
     return;
   }
   if (devp->config->lowPowerLabCompatibility) {
     if (devp->rxAvailable < 5) {
       /* print("LPL Bad packet length ???\n"); */
-      discard(devp,devp->rxAvailable);
+      resetQueue(devp);
       return;
     }
     devp->lpl_targetId = rfm69ReadReg(devp, RFM69_REG_FIFO);
@@ -234,15 +243,13 @@ unsigned int rfm69ReadAvailable(RFM69Driver *devp) {
 }
 
 static void waitForCompletion(RFM69Driver *devp) {
-  palSetPad(GPIOC, 0);
+  led(1, 1);
     chSysLock();
     devp->waitingThread = chThdGetSelfX();
-    led(5);
     chSchGoSleepS(CH_STATE_SUSPENDED);
-    led(6);
     /* msg = chThdSelf()->p_u.rdymsg; */
     chSysUnlock();
-  palClearPad(GPIOC, 0);
+    led(0, 1);
 }
 
 void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
@@ -287,8 +294,8 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
     rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
   }
 
-  sprintf(buffer, "read %d chars, %d left, empty=%d: \"%s\"\n",
-  	  toRead, devp->rxAvailable, devp->rxEmpty, (char *)(buf + 4));
+  sprintf(buffer, "read %d chars out of %d, %d left, empty=%d: \"%s\"\n",
+  	  toRead, available, devp->rxAvailable, devp->rxEmpty, (char *)(buf + 4));
   print(buffer);
 }
 
@@ -306,66 +313,21 @@ static void dumpState(RFM69Driver *devp, const char *pos) {
 }
 
 void rfm69Send(RFM69Driver *devp, uint8_t bufferSize, const void *buf) {
-  sprintf(buffer, "Trying to send %d/%s...", bufferSize, (const char *)buf + 4);
-  print(buffer);
-  led(7);
+  led(2, 2);
   rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY); /* So as not to be disturbed by arriving packet */
   /* avoid RX deadlocks */
   rfm69WriteReg(devp, RFM69_REG_PACKETCONFIG2,
 		(rfm69ReadReg(devp, RFM69_REG_PACKETCONFIG2) & 0xFB) | RFM69_RF_PACKET2_RXRESTART);
 
-  dumpState(devp, "before wr fifo");
   rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize);
   rfm69SpiSend(devp, bufferSize, buf);
-  dumpState(devp, "fifo written");
-  //dumpState(devp, "Transmit on");
 
-  /*
-  print("Buffer read back [");
-  for(int n = 63; n; --n) {
-    uint8_t status = rfm69ReadReg(devp, 0x28);
-    sprintf(buffer, "-%02x ", status);
-    print(buffer);
-    
-    if (!(status & 0x40)) break;
-    uint8_t v = rfm69ReadReg(devp, 0);
-    sprintf(buffer, "%02x ", v);
-    print(buffer);
-  }
-  print("]\n");
-  rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize);
-  rfm69SpiSend(devp, bufferSize, buf);
-  */
-
-  rfm69WriteReg(devp, RFM69_REG_DIOMAPPING1, RFM69_RF_DIOMAPPING1_DIO0_00); /* Interrupt when packet xmitted */
   rfm69SetMode(devp, RFM69_RF_OPMODE_TRANSMITTER);
 
   waitForCompletion(devp);
-  dumpState(devp, "transmitted");
+  //dumpState(devp, "transmitted");
 
-  rfm69WriteReg(devp, RFM69_REG_DIOMAPPING1, RFM69_RF_DIOMAPPING1_DIO0_01); /* Interrupt when packet received */
   rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
-  dumpState(devp, "Listening...");
-
-  print("done\n");
-}
-
-struct driverLine {
-  int mask;
-  stm32_gpio_t *port;
-  int bit;
-} _driver[4] = {
-  { 0x1, GPIOA, 4 },
-  { 0x2, GPIOB, 0 },
-  { 0x3, GPIOC, 1 },
-  { 0x4, GPIOC, 0 },
-  { 0, 0, 0 }
-};
-
-
-void led(int n) {
-  if (n & 0x1) palSetPad(GPIOA, 4); else palClearPad(GPIOA, 4);
-  if (n & 0x2) palSetPad(GPIOB, 0); else palClearPad(GPIOB, 0);
-  if (n & 0x4) palSetPad(GPIOC, 1); else palClearPad(GPIOC, 1);
-  if (n & 0x8) palSetPad(GPIOC, 0); else palClearPad(GPIOC, 0);
+  //dumpState(devp, "Listening...");
+  led(0, 2);
 }

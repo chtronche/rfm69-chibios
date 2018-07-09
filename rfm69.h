@@ -76,6 +76,7 @@ typedef struct {
   uint8_t lpl_targetId;
   uint8_t lpl_ctl;
   uint8_t senderId;
+  uint32_t badPacket; /* I love 32 bits MCUs */
 } RFM69Driver;
 
 extern RFM69Driver RFM69D1;
@@ -132,7 +133,5 @@ uint8_t rfm69ReadReg(RFM69Driver *, uint8_t addr);
 void rfm69WriteReg(RFM69Driver *, uint8_t addr, uint8_t values);
 
 void rfm69Reset(ioportid_t resetIOPort, uint16_t resetPad); /* Most important API of all */
-
-void led(int n);
 
 #endif /* _RFM69_H_ */

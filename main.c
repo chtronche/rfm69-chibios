@@ -23,13 +23,7 @@
 
 #include "rfm69.h"
 
-//Mutex printMutex;
-
-void print(const char *s) {
-  //  chMtxLock(&printMutex);
-  sdWrite(&SD2, (const uint8_t *)s, strlen(s));
-  //  chMtxUnlock(&printMutex);
-}
+#include "debug.h"
 
 static const SPIConfig ls_spicfg = {
   NULL,
@@ -110,6 +104,8 @@ static void compareReg(const char *buffer) {
   print(buffer2);
 }
 
+char buffer3[64];
+
 int main(void) {
   halInit();
   chSysInit();
@@ -139,11 +135,9 @@ int main(void) {
   palSetPadMode(GPIOC, 1, PAL_MODE_OUTPUT_PUSHPULL);
   palSetPadMode(GPIOC, 0, PAL_MODE_OUTPUT_PUSHPULL);
 
-  led(0);
-  
   for(int n = 15; n >= 0; n--) {
-    led(n);
-    chThdSleepMilliseconds(500);
+    led(n, 0xf);
+    chThdSleepMilliseconds(300);
   }
 
   rfm69Reset(GPIOC, 7);
@@ -188,15 +182,13 @@ int main(void) {
     print(buffer);
     //}
     chThdSleepMilliseconds(250);
-    led(1);
 
     buffer[0] = '\x80';
     buffer[1] = (char)(98); /* Target id */
     buffer[2] = 'P'; /* Source id */
     buffer[3] = '\0'; /* Control byte */
-    sprintf(buffer + 4, "coucou %d", n++);
+    sprintf(buffer + 4, "coucou-xxxx-yyyy %d", n++);
     rfm69Send(&RFM69D1, strlen(buffer + 4) + 3, buffer);
-    led(2);
     chThdSleepMilliseconds(250);
   }
   return 0;
