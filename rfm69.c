@@ -10,6 +10,10 @@
 
 #define RFM69_MAX_DRIVER_NUM (1)
 
+/*
+ * TODO: Check all spiExchange / spiReceive and check if it shouldn't be the reverse
+ */
+
 RFM69Driver RFM69D1;
 
 void rfm69ObjectInit(RFM69Driver *devp) {
@@ -265,15 +269,12 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
 
   uint8_t readFifo = RFM69_REG_FIFO;
   int toRead = MIN(bufferSize, available);
-  sprintf(buffer, "\n%d bytes: ", toRead);
+  sprintf(buffer, "\n%d bytes/%d: ", toRead, available);
   print(buffer);
 
   spiAcquireBus(spi);
   spiSelect(spi);
 
-  /*
-  spiExchange(spi, 4, &readFifo, buf);
-  */
   spiExchange(spi, toRead, &readFifo, buf);
 
   spiUnselect(spi);
@@ -294,9 +295,9 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
     rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
   }
 
-  sprintf(buffer, "read %d chars out of %d, %d left, empty=%d: \"%s\"\n",
-  	  toRead, available, devp->rxAvailable, devp->rxEmpty, (char *)(buf + 4));
-  print(buffer);
+  /* sprintf(buffer, "read %d chars out of %d, %d left, empty=%d: \"%s\"\n", */
+  /* 	  toRead, available, devp->rxAvailable, devp->rxEmpty, (char *)(buf + 4)); */
+  /* print(buffer); */
 }
 
 uint8_t rfm69ReadRSSI(RFM69Driver *devp) {
