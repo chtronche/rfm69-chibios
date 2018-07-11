@@ -59,12 +59,10 @@ const rfm69_frequency_t rfm69_868MHz = { 0xD9, 0x00, 0x00 };
 const rfm69_frequency_t rfm69_915MHz = { 0xE4, 0xC0, 0x00 };
 
 char bufferd[128];
-static inline void setMode(RFM69Driver *devp, uint8_t mode) {
-  rfm69WriteReg(devp, RFM69_REG_OPMODE, mode);
-}
 
 void rfm69SetFrequency(RFM69Driver *devp, const rfm69_frequency_t *freq) {
-  setMode(devp, RFM69_RF_OPMODE_STANDBY);
+  print("Setting frequency\n");
+  rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY);
   rfm69WriteReg(devp, RFM69_REG_FRFMSB, freq->msb);
   rfm69WriteReg(devp, RFM69_REG_FRFMID, freq->mid);
   rfm69WriteReg(devp, RFM69_REG_FRFLSB, freq->lsb);
@@ -74,7 +72,7 @@ const rfm69_bitrate_t rfm69_4800bps = { 0x02, 0x40 };
 const rfm69_bitrate_t rfm69_9600bps = { 0x0d, 0x05 };
 
 void rfm69SetBitrate(RFM69Driver *devp, const rfm69_bitrate_t *br) {
-  setMode(devp, RFM69_RF_OPMODE_STANDBY);
+  rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY);
   rfm69WriteReg(devp, RFM69_REG_BITRATEMSB, br->msb);
   rfm69WriteReg(devp, RFM69_REG_BITRATELSB, br->lsb);
 }
@@ -85,7 +83,9 @@ static void rfm69SetHighPowerRegs(RFM69Driver *devp, bool _set) {
   /* What is powerful for now is this function :-) */
 }
 
-static void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
+void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
+  if (devp->mode == newMode) return;
+
   switch(newMode) {
   case RFM69_RF_OPMODE_STANDBY: led (4, 0xc); break;
   case RFM69_RF_OPMODE_RECEIVER: led(8, 0xc); break;
@@ -93,8 +93,6 @@ static void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
   default: led(0, 0xc);
     
   }
-
-  if (devp->mode == newMode) return;
 
   switch (newMode) {
   case RFM69_RF_OPMODE_RECEIVER:
@@ -247,7 +245,9 @@ unsigned int rfm69ReadAvailable(RFM69Driver *devp) {
 }
 
 static void waitForCompletion(RFM69Driver *devp) {
+  
   led(1, 1);
+  dumpReg(devp);
     chSysLock();
     devp->waitingThread = chThdGetSelfX();
     chSchGoSleepS(CH_STATE_SUSPENDED);

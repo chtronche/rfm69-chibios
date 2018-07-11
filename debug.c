@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "debug.h"
+
 #include "hal.h"
 
 void print(const char *s) {
@@ -30,4 +32,17 @@ void led(int n, unsigned mask) {
     }
     bit = bit << 1;
   }
+}
+
+uint8_t regs[] = { 0x1, 0x2, 0x3, 0x4, 0x25, 0x26, 0x27, 0x28, 0 };
+
+static char buffer[64];
+
+void dumpReg(RFM69Driver *devp) {
+  for(uint8_t *p = regs; *p; p++) {
+    uint8_t v = rfm69ReadReg(devp, *p);
+    sprintf(buffer, "%02x=%02x ", *p, v);
+    print(buffer);
+  }
+  print("\n");
 }

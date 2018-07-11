@@ -188,7 +188,7 @@ int main(void) {
     buffer[2] = 'P'; /* Source id */
     buffer[3] = '\0'; /* Control byte */
     sprintf(buffer + 4, "coucou-xxxx-yyyy %d", n++);
-    rfm69Send(&RFM69D1, strlen(buffer + 4) + 3, buffer);
+    //rfm69Send(&RFM69D1, strlen(buffer + 4) + 3, buffer);
     chThdSleepMilliseconds(250);
   }
   return 0;

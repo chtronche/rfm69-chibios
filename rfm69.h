@@ -132,6 +132,8 @@ void rfm69D1ExtCallback(EXTDriver *extp, expchannel_t channel); /* Don't forget 
 uint8_t rfm69ReadReg(RFM69Driver *, uint8_t addr);
 void rfm69WriteReg(RFM69Driver *, uint8_t addr, uint8_t values);
 
+void rfm69SetMode(RFM69Driver *, uint8_t newMode);
+
 void rfm69Reset(ioportid_t resetIOPort, uint16_t resetPad); /* Most important API of all */
 
 #endif /* _RFM69_H_ */
