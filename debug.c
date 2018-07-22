@@ -46,3 +46,13 @@ void dumpReg(RFM69Driver *devp) {
   }
   print("\n");
 }
+
+static void dumpState(RFM69Driver *devp, const char *pos) {
+  uint8_t mode = rfm69ReadReg(devp, 0x01);
+  uint8_t data = rfm69ReadReg(devp, 0x02);
+  uint8_t irq1 = rfm69ReadReg(devp, 0x27);
+  uint8_t irq2 = rfm69ReadReg(devp, 0x28);
+  sprintf(buffer, "%s\tmode=%x\tdata=%x\tirq1=%x\tirq2=%x\n", pos, mode, data, irq1, irq2);
+  print(buffer);
+}
+

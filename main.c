@@ -113,6 +113,7 @@ int main(void) {
   //chMtxInit(printMutex);
   sdStart(&SD2, NULL);
 
+  print("Starting v2\n");
   //  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
   rfm69ObjectInit(&RFM69D1);
@@ -160,13 +161,6 @@ int main(void) {
   print("\n");
 
   for(;;) {
-    print(".");
-    /* uint8_t mode = rfm69ReadReg(&RFM69D1, 0x01); */
-    /* uint8_t flags1 = rfm69ReadReg(&RFM69D1, 0x27); */
-    /* uint8_t flags2 = rfm69ReadReg(&RFM69D1, 0x28); */
-    /* sprintf(buffer, "[%x %x %x]", mode, flags1, flags2); */
-    /* print(buffer); */
-    //if (rfm69ReadAvailable(&RFM69D1)) {
     rfm69Read(&RFM69D1, buffer, 64);
     total += 1;
     print(buffer + 4);
@@ -188,7 +182,7 @@ int main(void) {
     buffer[2] = 'P'; /* Source id */
     buffer[3] = '\0'; /* Control byte */
     sprintf(buffer + 4, "coucou-xxxx-yyyy %d", n++);
-    //rfm69Send(&RFM69D1, strlen(buffer + 4) + 3, buffer);
+    rfm69Send(&RFM69D1, strlen(buffer + 4) + 4, buffer);
     chThdSleepMilliseconds(250);
   }
   return 0;

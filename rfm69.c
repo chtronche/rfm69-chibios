@@ -112,10 +112,15 @@ void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
       (newMode == RFM69_RF_OPMODE_TRANSMITTER || newMode == RFM69_RF_OPMODE_RECEIVER))
     rfm69SetHighPowerRegs(devp, newMode == RFM69_RF_OPMODE_TRANSMITTER);
 
-  // we are using packet mode, so this check is not really needed
-  // but waiting for mode ready is necessary when going from sleep because the FIFO may not be immediately available from previous mode
-  if (devp->mode == RFM69_RF_OPMODE_SLEEP) 
-    while (!(rfm69ReadReg(devp, RFM69_REG_IRQFLAGS1) & RFM69_RF_IRQFLAGS1_MODEREADY)); // wait for ModeReady
+  /*
+    We don't wait when going to reading mode, because when doing so,
+    the next step is to wait for a packet, that we'll get only the the
+    RFM69's ready. 
+    We don't wait when going to writing mode, because after that,
+    we'll just send a packet, and the RFM69 won't do it before being ready.  
+  */
+  if (newMode == RFM69_RF_OPMODE_SLEEP)
+    while (!(rfm69ReadReg(devp, RFM69_REG_IRQFLAGS1) & RFM69_RF_IRQFLAGS1_MODEREADY));
 }
 
 /* Same default settings as in the LowPowerLab library, to get easier interoperability */
@@ -208,28 +213,22 @@ char buffer[BUFFER_SIZE];
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-static void resetQueue(RFM69Driver *devp) {
-  print("*** Reset queue ***\n");
-  devp->badPacket++;
-  devp->rxAvailable = 0;
-  devp->rxEmpty = true;
-  /* Going from standby to receiver mode clears the FIFO */
-  rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY);
-  rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
-}
-
 static void _rfm69ReadAvailable(RFM69Driver *devp) {
   if (devp->rxEmpty) return;
   if (devp->rxAvailable) return;
   devp->rxAvailable = rfm69ReadReg(devp, RFM69_REG_FIFO) + 1;  /* +1 because of length ? */
   if (devp->rxAvailable < 2 || devp->rxAvailable > 64) {
-    resetQueue(devp);
+    print("*** Reset queue ***\n");
+    devp->badPacket++;
+    rfm69ClearFIFO(devp);
     return;
   }
   if (devp->config->lowPowerLabCompatibility) {
     if (devp->rxAvailable < 5) {
       /* print("LPL Bad packet length ???\n"); */
-      resetQueue(devp);
+      print("*** Reset queue/2 ***\n");
+      devp->badPacket++;
+      rfm69ClearFIFO(devp);
       return;
     }
     devp->lpl_targetId = rfm69ReadReg(devp, RFM69_REG_FIFO);
@@ -245,15 +244,13 @@ unsigned int rfm69ReadAvailable(RFM69Driver *devp) {
 }
 
 static void waitForCompletion(RFM69Driver *devp) {
-  
   led(1, 1);
-  dumpReg(devp);
-    chSysLock();
-    devp->waitingThread = chThdGetSelfX();
-    chSchGoSleepS(CH_STATE_SUSPENDED);
-    /* msg = chThdSelf()->p_u.rdymsg; */
-    chSysUnlock();
-    led(0, 1);
+  chSysLock();
+  devp->waitingThread = chThdGetSelfX();
+  chSchGoSleepS(CH_STATE_SUSPENDED);
+  /* msg = chThdSelf()->p_u.rdymsg; */
+  chSysUnlock();
+  led(0, 1);
 }
 
 void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
@@ -269,8 +266,6 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
 
   uint8_t readFifo = RFM69_REG_FIFO;
   int toRead = MIN(bufferSize, available);
-  sprintf(buffer, "\n%d bytes/%d: ", toRead, available);
-  print(buffer);
 
   spiAcquireBus(spi);
   spiSelect(spi);
@@ -279,14 +274,6 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
 
   spiUnselect(spi);
   spiReleaseBus(spi);
-
-  if (toRead > 32) {
-    const char *p = buf;
-    for(int n = toRead; n; --n) {
-      sprintf(buffer, "%02x ", *p++);
-      print(buffer);
-    }
-  }
 
   if (toRead < bufferSize) ((char *)buf)[toRead] = '\0';
   devp->rxAvailable -= toRead;
@@ -304,31 +291,27 @@ uint8_t rfm69ReadRSSI(RFM69Driver *devp) {
   return rfm69ReadReg(devp, RFM69_REG_RSSIVALUE);
 }
 
-static void dumpState(RFM69Driver *devp, const char *pos) {
-  uint8_t mode = rfm69ReadReg(devp, 0x01);
-  uint8_t data = rfm69ReadReg(devp, 0x02);
-  uint8_t irq1 = rfm69ReadReg(devp, 0x27);
-  uint8_t irq2 = rfm69ReadReg(devp, 0x28);
-  sprintf(buffer, "%s\tmode=%x\tdata=%x\tirq1=%x\tirq2=%x\n", pos, mode, data, irq1, irq2);
-  print(buffer);
+void rfm69ClearFIFO(RFM69Driver *devp) {
+  rfm69WriteReg(devp, RFM69_REG_IRQFLAGS2, rfm69ReadReg(devp, RFM69_REG_IRQFLAGS2) | RFM69_RF_IRQFLAGS2_FIFOOVERRUN);
+  devp->rxAvailable = 0;
+  devp->rxEmpty = true;
 }
 
 void rfm69Send(RFM69Driver *devp, uint8_t bufferSize, const void *buf) {
   led(2, 2);
+
   rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY); /* So as not to be disturbed by arriving packet */
+  rfm69ClearFIFO(devp);
   /* avoid RX deadlocks */
   rfm69WriteReg(devp, RFM69_REG_PACKETCONFIG2,
 		(rfm69ReadReg(devp, RFM69_REG_PACKETCONFIG2) & 0xFB) | RFM69_RF_PACKET2_RXRESTART);
 
-  rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize);
-  rfm69SpiSend(devp, bufferSize, buf);
+  rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize); /* Write length byte to FIFO*/
+  rfm69SpiSend(devp, bufferSize, buf);             /* Write everything else to FIFO */
 
-  rfm69SetMode(devp, RFM69_RF_OPMODE_TRANSMITTER);
-
+  rfm69SetMode(devp, RFM69_RF_OPMODE_TRANSMITTER); /* Launch transmission */
   waitForCompletion(devp);
-  //dumpState(devp, "transmitted");
 
   rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
-  //dumpState(devp, "Listening...");
   led(0, 2);
 }
