@@ -17,10 +17,11 @@ struct driverLine {
   stm32_gpio_t *port;
   int bit;
 } _driver[] = {
-  { GPIOA, 4 }, // 0x1 red
-  { GPIOB, 0 }, // 0x2 yellow
-  { GPIOC, 1 }, // 0x3 blue
-  { GPIOC, 0 }, // 0x4 white
+  { GPIOA, 11 }, // 0x1 red
+  { GPIOA, 12 }, // 0x2 yellow
+  { GPIOC, 5 }, // 0x3 blue
+  { GPIOC, 6 }, // 0x4 white
+  { GPIOC, 8 }, // 0x4 white
   { 0, 0 }
 };
 
@@ -32,6 +33,22 @@ void led(int n, unsigned mask) {
     }
     bit = bit << 1;
   }
+}
+
+void init_led() {
+  for(struct driverLine *p = _driver; p->port; p++) {
+    palSetPadMode(p->port, p->bit, PAL_MODE_OUTPUT_PUSHPULL);
+  }
+}
+
+void chenillard() {
+  unsigned v = 1;
+  for(int n = 5; n; n--) {
+    led(v, 0x1f);
+    v = v << 1;
+    chThdSleepMilliseconds(200);
+  }
+  led(0, 0x1f);
 }
 
 uint8_t regs[] = { 0x1, 0x2, 0x3, 0x4, 0x25, 0x26, 0x27, 0x28, 0 };

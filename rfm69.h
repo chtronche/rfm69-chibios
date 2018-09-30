@@ -71,7 +71,7 @@ typedef struct {
   thread_t *waitingThread;
   rfm69_status_t status;
   volatile uint8_t mode;
-  bool rxEmpty;
+  volatile bool rxEmpty;
   uint8_t rxAvailable;
   uint8_t lpl_targetId;
   uint8_t lpl_ctl;
@@ -101,6 +101,10 @@ extern RFM69Driver RFM69D1;
 // TWS: define CTLbyte bits
 #define RFM69_CTL_SENDACK   0x80
 #define RFM69_CTL_REQACK    0x40
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 void rfm69ObjectInit(RFM69Driver *);
 void rfm69Start(RFM69Driver *, RFM69Config *);
@@ -137,5 +141,10 @@ void rfm69SetMode(RFM69Driver *, uint8_t newMode);
 void rfm69ClearFIFO(RFM69Driver *devp);
 
 void rfm69Reset(ioportid_t resetIOPort, uint16_t resetPad); /* Most important API of all */
+
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif /* _RFM69_H_ */

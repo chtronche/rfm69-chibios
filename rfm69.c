@@ -6,8 +6,6 @@
 
 #include <ch.h>
 
-#include "debug.h"
-
 #define RFM69_MAX_DRIVER_NUM (1)
 
 /*
@@ -61,7 +59,6 @@ const rfm69_frequency_t rfm69_915MHz = { 0xE4, 0xC0, 0x00 };
 char bufferd[128];
 
 void rfm69SetFrequency(RFM69Driver *devp, const rfm69_frequency_t *freq) {
-  print("Setting frequency\n");
   rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY);
   rfm69WriteReg(devp, RFM69_REG_FRFMSB, freq->msb);
   rfm69WriteReg(devp, RFM69_REG_FRFMID, freq->mid);
@@ -85,14 +82,6 @@ static void rfm69SetHighPowerRegs(RFM69Driver *devp, bool _set) {
 
 void rfm69SetMode(RFM69Driver *devp, uint8_t newMode) {
   if (devp->mode == newMode) return;
-
-  switch(newMode) {
-  case RFM69_RF_OPMODE_STANDBY: led (4, 0xc); break;
-  case RFM69_RF_OPMODE_RECEIVER: led(8, 0xc); break;
-  case RFM69_RF_OPMODE_TRANSMITTER: led(0xc, 0xc); break;
-  default: led(0, 0xc);
-    
-  }
 
   switch (newMode) {
   case RFM69_RF_OPMODE_RECEIVER:
@@ -155,8 +144,9 @@ void rfm69Start(RFM69Driver *devp, RFM69Config *config) {
   spiStart(spi, config->spiConfig);
   spiReleaseBus(spi);
 
+  rfm69SetMode(&RFM69D1, RFM69_RF_OPMODE_STANDBY);
   rfm69WriteReg(devp, RFM69_REG_DIOMAPPING1, RFM69_RF_DIOMAPPING1_DIO0_01);  /* Spend most of the time receiving, so listen to an interrupt "packet received" */
-  rfm69WriteReg(devp, RFM69_REG_DIOMAPPING2, RFM69_RF_DIOMAPPING2_CLKOUT_OFF);  /* DIO0 is the only IRQ we're using */
+ rfm69WriteReg(devp, RFM69_REG_DIOMAPPING2, RFM69_RF_DIOMAPPING2_CLKOUT_OFF);  /* DIO0 is the only IRQ we're using */
 
   rfm69SetFrequency(devp, config->frequency);
   if (!config->bitrate) config->bitrate = &rfm69_4800bps;
@@ -190,20 +180,28 @@ void rfm69Reset(ioportid_t ioport, uint16_t pad) {
 }
 
 void extCallback(RFM69Driver *devp) {
+  led(0x10, 0x10);
   chSysLockFromISR();
   if (devp->mode == RFM69_RF_OPMODE_RECEIVER) devp->rxEmpty = false;
+  if (!devp->rxEmpty) led(0x1, 0x1);
   if (devp->waitingThread) {
     // tp->p_u.rdymsg = (msg_t)55;     /* Sending the message, optional.*/
     chSchReadyI(devp->waitingThread);
     devp->waitingThread = NULL;
   }
   chSysUnlockFromISR();
+  led(0, 0x10);
 }
+
+unsigned long nExt = 0;
+void *lastAddr = 0;
 
 void rfm69D1ExtCallback(EXTDriver *extp, expchannel_t channel) {
   (void)extp;
   (void)channel;
 
+  nExt++;
+  lastAddr = &RFM69D1;
   extCallback(&RFM69D1);
 }
 
@@ -244,25 +242,32 @@ unsigned int rfm69ReadAvailable(RFM69Driver *devp) {
 }
 
 static void waitForCompletion(RFM69Driver *devp) {
-  led(1, 1);
+  led(4, 6);
   chSysLock();
   devp->waitingThread = chThdGetSelfX();
+  led(5, 6);
   chSchGoSleepS(CH_STATE_SUSPENDED);
   /* msg = chThdSelf()->p_u.rdymsg; */
   chSysUnlock();
-  led(0, 1);
+  led(0, 6);
 }
 
 void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
   (void)devp;
   SPIDriver *spi = devp->config->spip;
 
+  led(6, 0x1f);
   unsigned int available = rfm69ReadAvailable(devp);
+  led(7, 0x1f);
 
   if (!available) {
+    led(8, 0x1f);
     waitForCompletion(devp);
+    led(9, 0x1f);
     available = rfm69ReadAvailable(devp);
+    led(10, 0x1f);
   }
+  led(11, 0x1f);
 
   uint8_t readFifo = RFM69_REG_FIFO;
   int toRead = MIN(bufferSize, available);
@@ -270,10 +275,13 @@ void rfm69Read(RFM69Driver *devp, void *buf, uint8_t bufferSize) {
   spiAcquireBus(spi);
   spiSelect(spi);
 
+  led(12, 0x1f);
   spiExchange(spi, toRead, &readFifo, buf);
+  led(13, 0x1f);
 
   spiUnselect(spi);
   spiReleaseBus(spi);
+  led(14, 0x1f);
 
   if (toRead < bufferSize) ((char *)buf)[toRead] = '\0';
   devp->rxAvailable -= toRead;
@@ -298,20 +306,17 @@ void rfm69ClearFIFO(RFM69Driver *devp) {
 }
 
 void rfm69Send(RFM69Driver *devp, uint8_t bufferSize, const void *buf) {
-  led(2, 2);
-
   rfm69SetMode(devp, RFM69_RF_OPMODE_STANDBY); /* So as not to be disturbed by arriving packet */
   rfm69ClearFIFO(devp);
   /* avoid RX deadlocks */
   rfm69WriteReg(devp, RFM69_REG_PACKETCONFIG2,
 		(rfm69ReadReg(devp, RFM69_REG_PACKETCONFIG2) & 0xFB) | RFM69_RF_PACKET2_RXRESTART);
 
-  rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize); /* Write length byte to FIFO*/
-  rfm69SpiSend(devp, bufferSize, buf);             /* Write everything else to FIFO */
+  rfm69WriteReg(devp, RFM69_REG_FIFO, bufferSize-1); /* Write length byte to FIFO */
+  rfm69SpiSend(devp, bufferSize, buf);               /* Write everything else to FIFO */
 
   rfm69SetMode(devp, RFM69_RF_OPMODE_TRANSMITTER); /* Launch transmission */
   waitForCompletion(devp);
 
   rfm69SetMode(devp, RFM69_RF_OPMODE_RECEIVER);
-  led(0, 2);
 }

@@ -106,6 +106,23 @@ static void compareReg(const char *buffer) {
 
 char buffer3[64];
 
+static void _dump(const char *buffer) {
+  for(int line = 8; line; line--) {
+    for(int col = 8; col; col--) {
+      sprintf(buffer3, "%02x ", *buffer++);
+      print(buffer3);
+    }
+    print("\n");
+  }
+}
+
+static void closeString(char *buffer) {
+  int max = 64;
+  unsigned char *p = (unsigned char *)buffer + 4;
+  while(--max && *p >= ' ') p++;
+  *p = '\0';
+}
+
 int main(void) {
   halInit();
   chSysInit();
@@ -131,21 +148,20 @@ int main(void) {
                            PAL_STM32_OSPEED_HIGHEST);       /* New CS.      */
   palSetPad(GPIOB, 6);
 
-  palSetPadMode(GPIOA, 4, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOB, 0, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOC, 1, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPadMode(GPIOC, 0, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOA, 11, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOA, 12, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 5, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 6, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 8, PAL_MODE_OUTPUT_PUSHPULL);
 
-  for(int n = 15; n >= 0; n--) {
-    led(n, 0xf);
-    chThdSleepMilliseconds(300);
-  }
-
+  chenillard();
   rfm69Reset(GPIOC, 7);
+  led(1, 0x1f);
 
-  print("Starting...\n");
   extStart(&EXTD1, &extcfg); /* Don't start before rfm69Start ! Or enable channel only after */
+  led(2, 0x1f);
   rfm69Start(&RFM69D1, &_RFM69Config);
+  led(3, 0x1f);
 
   rfm69WriteReg(&RFM69D1, 0x13, 0xf);
   rfm69WriteReg(&RFM69D1, 0x11, 0x7f);
@@ -161,12 +177,18 @@ int main(void) {
   print("\n");
 
   for(;;) {
+    led(4, 0x1f);
     rfm69Read(&RFM69D1, buffer, 64);
+    led(5, 0x1f);
     total += 1;
+    closeString(buffer);
+    //_dump(buffer);
+    print(">>>");
     print(buffer + 4);
+    print("\n");
     uint32_t v = atoi(buffer + 5);
     if (v) {
-      if (last) missed += (v - last - 1);
+      if (last && v > last) missed += (v - last - 1);
       last = v;
     }
     
