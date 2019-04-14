@@ -1,24 +1,4 @@
-*****************************************************************************
-** ChibiOS/HAL - SPI driver demo for STM32F4xx.                            **
-*****************************************************************************
-
-** TARGET **
-
-The demo runs on an ST STM32F4-Discovery board.
-
-** The Demo **
-
-The application demonstrates the use of the STM32F4xx SPI driver.
-
-** Board Setup **
-
-- Connect PB14 and PB15 together for SPI loop-back.
-
-** Build Procedure **
-
-The demo has been tested using the free Codesourcery GCC-based toolchain
-and YAGARTO.
-Just modify the TRGT line in the makefile in order to use different GCC ports.
+Chibios RFM69 driver by Ch. Tronche
 
 ** Notes **
 
